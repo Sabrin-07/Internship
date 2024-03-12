@@ -1,0 +1,89 @@
+import numpy as np
+import nltk
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM, Embedding
+from tensorflow.keras.optimizers import RMSprop
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+# Sample conversation data
+conversations = [
+    ("Hi", "Hello!"),
+    ("How are you?", "I'm doing well, thank you."),
+    ("What is your name?", "I am a chatbot."),
+    ("Who created you?", "I was created by [Your Name]."),
+    ("Goodbye", "See you later!"),
+]
+
+# Tokenize and lemmatize words
+lemmatizer = WordNetLemmatizer()
+
+def tokenize_words(text):
+    return word_tokenize(text.lower())
+
+def lemmatize_words(words):
+    return [lemmatizer.lemmatize(word) for word in words]
+
+# Preprocess data
+tokenized_conversations = []
+for conversation in conversations:
+    tokenized_conversation = []
+    for sentence in conversation:
+        words = tokenize_words(sentence)
+        words = lemmatize_words(words)
+        tokenized_conversation.append(' '.join(words))
+    tokenized_conversations.append(tokenized_conversation)
+
+# Create input and target data
+input_texts = []
+target_texts = []
+
+for conversation in tokenized_conversations:
+    input_texts.append(conversation[0])
+    target_texts.append(conversation[1])
+
+# Tokenize input and target texts
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(input_texts + target_texts)
+input_sequences = tokenizer.texts_to_sequences(input_texts)
+target_sequences = tokenizer.texts_to_sequences(target_texts)
+
+# Pad sequences to make them equal length
+max_sequence_length = max(max(len(seq) for seq in input_sequences),
+                          max(len(seq) for seq in target_sequences))
+input_sequences = pad_sequences(input_sequences, maxlen=max_sequence_length, padding='post')
+target_sequences = pad_sequences(target_sequences, maxlen=max_sequence_length, padding='post')
+
+# Define model
+vocab_size = len(tokenizer.word_index) + 1
+embedding_dim = 100
+
+model = Sequential([
+    Embedding(vocab_size, embedding_dim, input_length=max_sequence_length),
+    LSTM(128),
+    Dense(vocab_size, activation='softmax')
+])
+
+model.compile(optimizer=RMSprop(), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+# Train model
+model.fit(input_sequences, np.array(target_sequences), epochs=100)
+
+# Function to generate response
+def generate_response(input_text):
+    input_seq = tokenizer.texts_to_sequences([input_text])
+    padded_input_seq = pad_sequences(input_seq, maxlen=max_sequence_length, padding='post')
+    predicted_seq = model.predict(padded_input_seq)[0]
+    predicted_word_index = np.argmax(predicted_seq)
+    predicted_word = tokenizer.index_word[predicted_word_index]
+    return predicted_word
+
+# Test the chatbot
+while True:
+    user_input = input("You: ")
+    if user_input.lower() == 'exit':
+        break
+    response = generate_response(user_input)
+    print("Bot:", response)
